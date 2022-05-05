@@ -5,17 +5,10 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 const sendEmail = require('../controllers/sendMail');
+const authUser = require('../middleware/authUser');
 
 const createActivationToken = (payload) => {
     return jwt.sign(payload, process.env.ACTIVATION_SECRET, { expiresIn: '5m' })
-}
-
-const createAccessToken = (payload) => {
-    return jwt.sign(payload, process.env.ACCESS_SECRET, { expiresIn: '15m' })
-}
-
-const createRefreshToken = (payload) => {
-    return jwt.sign(payload, process.env.REFRESH_SECRET, { expiresIn: '7d' })
 }
 
 // ROUTE 1: Create a user using : POST "/api/auth/createuser"
@@ -24,13 +17,16 @@ router.post('/createuser', async (req, res) => {
         // Check whether the user with this email exists already
         let success = false
         const { fname, lname, email, password } = req.body
+
         let user = await User.findOne({ email });
         if (user) {
-            return res.status(400).json({ success, error: "Please enter a unique email" });
+            req.flash("error", "Please enter a unique email")
+            return res.redirect('/register')
         }
 
         if (password.length < 5) {
-            return res.status(400).json({ success, error: "Password must be atleast 5 characters" });
+            req.flash("error", "Password must be atleast 5 characters")
+            return res.redirect('/register')
         }
 
         const salt = await bcrypt.genSalt(10);
@@ -45,28 +41,24 @@ router.post('/createuser', async (req, res) => {
         })
 
         const activation_token = createActivationToken(user)
-        const url = `${process.env.CLIENT_URL}/user/activate/${activation_token}`
+        const url = `${process.env.CLIENT_URL}/api/auth/user/activate/${activation_token}`
         sendEmail(email, url)
         success = true;
-        res.status(200).json({ success, msg: "Register Success! Please varify your email to start." });
+        req.flash("success", "Register Success! Please verify your email to start.")
+        res.redirect('/register')
     } catch (error) {
         res.status(500).send("Internal server error");
     }
 })
 
+
 // ROUTE 2: Verify email address using: POST "/api/auth/verification"
-router.post('/verification', async (req, res) => {
+router.get('/user/activate/:token', async (req, res) => {
     try {
         let success = false;
-        const { activation_token } = req.body
+        const activation_token = req.params.token
         const user = jwt.verify(activation_token, process.env.ACTIVATION_SECRET)
-
         const { firstname, lastname, email, password } = user
-        const check = await User.findOne({ email })
-
-        if (check) {
-            return res.status(400).json({ success, msg: "Please enter unique email" })
-        }
 
         // Create and save user
         const newUser = User.create({
@@ -75,7 +67,8 @@ router.post('/verification', async (req, res) => {
 
         success = true
 
-        res.json({ success, msg: "Account has been activated!" })
+        req.flash("success", "Account has been activated! Please login.")
+        return res.redirect('/login')
     } catch (error) {
         res.status(500).send("Internal server error")
     }
@@ -85,49 +78,83 @@ router.post('/verification', async (req, res) => {
 router.post('/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-        let success = false;
         let user = await User.findOne({ email });
         if (!user) {
-            return res.status(400).json({ success, "error": "Please try to login with correct credentials" });
+            req.flash('error', 'Try to login with correct credentials')
+            return res.redirect('/login')
         }
+
         const passwordCompare = await bcrypt.compare(password, user.password);
         if (!passwordCompare) {
-            return res.status(400).json({ success, "error": "Please try to login with correct credentials" });
+            req.flash('error', 'Try to login with correct credentials')
+            return res.redirect('/login')
         }
+        const token = jwt.sign({ data: user }, process.env.ACCESS_SECRET, { expiresIn: '24h' })
 
-        const refresh_token = createRefreshToken({ id: user._id })
-        res.cookie('refreshtoken', refresh_token, {
-            httpOnly: true,
-            path: '/api/auth/refresh_token',
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        res.cookie("token", token, {
+            httpOnly: true
         })
-        success = true;
-
-        res.json({ success });
+        req.flash("success", "Logged in successfully")
+        return res.redirect('/dashboard')
     } catch (error) {
-        res.status(500).send("Internal server error");
+        res.status(500).json({ msg: error.message });
     }
 })
 
-// Get Access Token
-router.post('/refresh_token', (req, res) => {
+// Update User Details
+router.patch('/update', authUser, async (req, res) => {
     try {
-        let success = false
-        const ref_token = req.cookies.refreshtoken
-        if (!ref_token) {
-            res.status(400).json({ success, msg: "Please login now" });
-        }
+        const userId = req.user.data._id;
+        // console.log(req.body);
+        const { firstname, lastname, email, gender, occupation, interests } = req.body
+        // const { date, month, year } = req.body.dob
+        // const education = req.body.education
+        // const employement = req.body.employement
+        // const socialNetworks = req.body.socialNetworks
 
-        jwt.verify(ref_token, process.env.REFRESH_SECRET, (err, user) => {
-            if (err) {
-                res.status(400).json({ success, msg: "Please login now" });
-            }
-            const access_token = createAccessToken({ id: user._id })
-            res.json({ access_token })
+        let user = await User.findOneAndUpdate({ _id: userId }, {
+            firstname, lastname, email,
+            gender, occupation, interests
         })
+        console.log(user);
+        // req.flash('success', 'Details updated')
+        return res.redirect('/dashboard')
     } catch (error) {
         res.status(500).send("Internal server error");
     }
 })
 
+// Log Out
+router.get('/logout', async (req, res) => {
+    try {
+        res.clearCookie("token")
+        req.flash("success", "Logged out successfully.")
+
+        return res.redirect('/')
+    } catch (error) {
+        res.status(500).send("Internal server error");
+    }
+})
+
+// Fetch Logged in User Details
+router.post('/getuser', authUser, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const user = await User.findById(userId).select("-password");
+        res.status(200).send(user);
+    } catch (error) {
+        res.status(500).send("Internal server error");
+    }
+})
+
+// Fetch User by ID
+router.get('/getuser/:id', async (req, res) => {
+    try {
+        const { id } = req.params
+        const user = await User.findById(id).select("-password");
+        res.status(200).send(user)
+    } catch (error) {
+        res.status(500).send("Internal server error");
+    }
+})
 module.exports = router;

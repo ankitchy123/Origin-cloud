@@ -23,7 +23,15 @@ const userSchema = new Schema({
     },
     dob:
     {
-        type: Date
+        date: {
+            type: Number
+        },
+        month: {
+            type: Number
+        },
+        year: {
+            type: Number
+        }
     },
     gender: {
         type: String
@@ -38,14 +46,11 @@ const userSchema = new Schema({
         course: {
             type: String
         },
-        year: {
-            type: Number
-        },
         location: {
             type: String
         }
     },
-    employment: {
+    employement: {
         company: {
             type: String,
         },
@@ -57,7 +62,7 @@ const userSchema = new Schema({
         }
     },
     interests: {
-        type: String
+        type: [String]
     },
     socialNetworks: {
         facebook: {
