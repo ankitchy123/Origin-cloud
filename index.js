@@ -5,6 +5,8 @@ var cors = require('cors')
 const cookieParser = require('cookie-parser')
 const flash = require('connect-flash');
 const authUser = require('./middleware/authUser');
+const User = require('./models/UserModel');
+const { Cookie } = require('express-session');
 const port = process.env.PORT || 5000
 
 app.use(cors())
@@ -23,41 +25,63 @@ app.use(function (req, res, next) {
     next();
 });
 
+app.get('/getcookie', function (req, res) {
+    res.send(req.cookies);
+})
+
 
 // Middleware
 app.set('view engine', 'ejs')
 // connect with database
 connectToMongo();
 
-app.get('/', (req, res) => {
-    res.render('index')
-})
-
 app.get('/login', (req, res) => {
     res.render('login')
 })
 
 app.get('/register', (req, res) => {
-    res.render('register')
+    res.render('register', {
+        CLIENT_ID: process.env.MAILING_SERVICE_CLIENT_ID
+    })
 })
 
-app.get('/dashboard', authUser, (req, res) => {
+app.get('/', authUser, async (req, res) => {
     if (req.user) {
-        return res.render('dashboard')
-    }
-    req.flash("success", "Please login")
-    return res.redirect('/login')
-})
+        const { email } = req.user.data;
+        let user = await User.findOne({ email });
 
-app.get('/updatedetails', authUser, (req, res) => {
-    if (req.user) {
-        return res.render('update', {
-            user: req.user.data
+        return res.render('dashboard', {
+            user, CLIENT_ID: process.env.MAILING_SERVICE_CLIENT_ID
         })
     }
     req.flash("success", "Please login")
     return res.redirect('/login')
 })
+
+app.get('/profile', authUser, async (req, res) => {
+    if (req.user) {
+        const { email } = req.user.data;
+        let user = await User.findOne({ email });
+        return res.render('profile', {
+            user, CLIENT_ID: process.env.MAILING_SERVICE_CLIENT_ID
+        })
+    }
+    req.flash("success", "Please login")
+    return res.redirect('/login')
+})
+
+app.get('/update', authUser, async (req, res) => {
+    if (req.user) {
+        const { email } = req.user.data;
+        let user = await User.findOne({ email });
+        return res.render('update', {
+            user, CLIENT_ID: process.env.MAILING_SERVICE_CLIENT_ID
+        })
+    }
+    req.flash("success", "Please login")
+    return res.redirect('/login')
+})
+
 
 app.use('/api/auth', require('./routes/auth'));
 

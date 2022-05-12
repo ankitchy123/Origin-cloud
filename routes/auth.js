@@ -15,8 +15,7 @@ const createActivationToken = (payload) => {
 router.post('/createuser', async (req, res) => {
     try {
         // Check whether the user with this email exists already
-        let success = false
-        const { fname, lname, email, password } = req.body
+        const { fname, lname, gender, email, password } = req.body
 
         let user = await User.findOne({ email });
         if (user) {
@@ -36,6 +35,7 @@ router.post('/createuser', async (req, res) => {
         user = ({
             firstname: fname,
             lastname: lname,
+            gender: gender,
             email: email,
             password: secPass
         })
@@ -43,7 +43,7 @@ router.post('/createuser', async (req, res) => {
         const activation_token = createActivationToken(user)
         const url = `${process.env.CLIENT_URL}/api/auth/user/activate/${activation_token}`
         sendEmail(email, url)
-        success = true;
+
         req.flash("success", "Register Success! Please verify your email to start.")
         res.redirect('/register')
     } catch (error) {
@@ -55,17 +55,14 @@ router.post('/createuser', async (req, res) => {
 // ROUTE 2: Verify email address using: POST "/api/auth/verification"
 router.get('/user/activate/:token', async (req, res) => {
     try {
-        let success = false;
         const activation_token = req.params.token
         const user = jwt.verify(activation_token, process.env.ACTIVATION_SECRET)
-        const { firstname, lastname, email, password } = user
+        const { firstname, lastname, gender, email, password } = user
 
         // Create and save user
         const newUser = User.create({
             firstname, lastname, email, password
         })
-
-        success = true
 
         req.flash("success", "Account has been activated! Please login.")
         return res.redirect('/login')
@@ -95,7 +92,7 @@ router.post('/login', async (req, res) => {
             httpOnly: true
         })
         req.flash("success", "Logged in successfully")
-        return res.redirect('/dashboard')
+        return res.redirect('/')
     } catch (error) {
         res.status(500).json({ msg: error.message });
     }
@@ -105,20 +102,18 @@ router.post('/login', async (req, res) => {
 router.patch('/update', authUser, async (req, res) => {
     try {
         const userId = req.user.data._id;
-        // console.log(req.body);
         const { firstname, lastname, email, gender, occupation, interests } = req.body
-        // const { date, month, year } = req.body.dob
-        // const education = req.body.education
+        const dob = req.body.dob
+        const education = req.body.education
         // const employement = req.body.employement
         // const socialNetworks = req.body.socialNetworks
 
         let user = await User.findOneAndUpdate({ _id: userId }, {
-            firstname, lastname, email,
-            gender, occupation, interests
+            firstname, lastname, email, dob, gender, occupation, interests, education
         })
-        console.log(user);
-        // req.flash('success', 'Details updated')
-        return res.redirect('/dashboard')
+
+        req.flash('success', 'Details updated')
+        res.redirect('/update')
     } catch (error) {
         res.status(500).send("Internal server error");
     }
@@ -157,4 +152,5 @@ router.get('/getuser/:id', async (req, res) => {
         res.status(500).send("Internal server error");
     }
 })
+
 module.exports = router;

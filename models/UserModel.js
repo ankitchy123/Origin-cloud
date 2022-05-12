@@ -24,23 +24,23 @@ const userSchema = new Schema({
     dob:
     {
         date: {
-            type: Number
+            type: String
         },
         month: {
-            type: Number
+            type: String
         },
         year: {
-            type: Number
+            type: String
         }
     },
     gender: {
-        type: String
+        type: String,
     },
     occupation: {
         type: String
     },
     education: {
-        institutionName: {
+        institutionname: {
             type: String
         },
         course: {
